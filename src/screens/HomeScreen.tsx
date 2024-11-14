@@ -2,17 +2,15 @@ import React from 'react';
 import { Text, View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 
-// Using Reanimated for fade-in animation
 const HomeScreen: React.FC = () => {
   const navigation = useNavigation();
-  const fadeAnim = React.useRef(new Animated.Value(0)).current; // Initial opacity set to 0
+  const fadeAnim = React.useRef(new Animated.Value(0)).current; 
 
-  // Animate the opacity to make it fade in
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 1000, // Duration of 1 second
-      useNativeDriver: true, // Use native driver for better performance
+      duration: 1000, 
+      useNativeDriver: true, 
     }).start();
   }, [fadeAnim]);
 
