@@ -22,7 +22,6 @@ const HomeScreen: React.FC = () => {
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      <Text style={styles.header}>Welcome to My Audio App</Text>
       <View style={styles.cardContainer}>
         {buttonData.map((button, index) => (
           <Pressable
@@ -46,11 +45,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
+    backgroundColor: 'skyblue',
     alignItems: 'center',
     padding: 20,
   },
   header: {
-    fontSize: 24,
+    fontSize: 20,
+    color: '#fff',
     fontWeight: 'bold',
     marginBottom: 40,
   },
@@ -74,12 +75,13 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
   },
   cardText: {
-    color: '#fff',
+    color: '#000',
     fontSize: 18,
     fontWeight: '600',
   },
   icon: {
     marginRight: 10,
+    color: '#000'
   },
 });
 

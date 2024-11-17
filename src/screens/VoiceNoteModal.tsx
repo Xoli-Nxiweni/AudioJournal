@@ -1,18 +1,27 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Modal, View, TextInput, Text, TouchableOpacity, StyleSheet, TouchableWithoutFeedback, Keyboard, ActivityIndicator } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import {
+  Modal,
+  View,
+  TextInput,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  TouchableWithoutFeedback,
+  Keyboard,
+  ActivityIndicator,
+} from "react-native";
+import { Ionicons, MaterialIcons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
-import Slider from '@react-native-community/slider';
-import ErrorBoundary from "../components/ErrorBoundary";
+import Slider from "@react-native-community/slider";
 
-// Define default colors
 const defaultColors = {
-  card: '#FFFFFF',
-  text: '#000000',
-  inputBackground: '#F0F0F0',
-  placeholder: '#999999',
-  buttonText: '#FFFFFF',
-  primary: '#007AFF'
+  card: "#1E1E1E",
+  text: "#FFFFFF",
+  inputBackground: "#2B2B2B",
+  placeholder: "#999999",
+  buttonText: "#FFFFFF",
+  primary: "#0DBD8B",
+  accent: "#FF3B30",
 };
 
 interface VoiceNoteModalProps {
@@ -23,19 +32,7 @@ interface VoiceNoteModalProps {
   onUpdateNote: () => void;
   onDeleteNote: () => void;
   audioUri: string;
-  colors?: {
-    card: string;
-    text: string;
-    inputBackground: string;
-    placeholder: string;
-    buttonText: string;
-    primary: string;
-  };
-}
-
-interface AudioStatus {
-  isLoading: boolean;
-  error: string | null;
+  colors?: typeof defaultColors;
 }
 
 const VoiceNoteModal: React.FC<VoiceNoteModalProps> = ({
@@ -52,62 +49,47 @@ const VoiceNoteModal: React.FC<VoiceNoteModalProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackPosition, setPlaybackPosition] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
+  const [volume, setVolume] = useState(1.0);
   const [duration, setDuration] = useState(0);
-  const [audioStatus, setAudioStatus] = useState<AudioStatus>({
-    isLoading: false,
-    error: null,
-  });
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Format time in mm:ss format
-  const formatTime = useCallback((milliseconds: number): string => {
+  const formatTime = (milliseconds: number): string => {
     const totalSeconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  }, []);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
 
-  // Memoized audio loading function
   const loadAudio = useCallback(async () => {
-    if (!audioUri) {
-      setAudioStatus({ isLoading: false, error: "No audio URI provided" });
-      return;
-    }
+    if (!audioUri) return;
 
-    setAudioStatus({ isLoading: true, error: null });
-
+    setIsLoading(true);
     try {
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
-      });
-
       const { sound } = await Audio.Sound.createAsync(
         { uri: audioUri },
-        { shouldPlay: false, isLooping: false },
-        onPlaybackStatusUpdate
+        { shouldPlay: false, volume }
       );
 
-      setSound(sound);
-      const status = await sound.getStatusAsync();
-      if (status.isLoaded && status.durationMillis) {
-        setDuration(status.durationMillis);
-      }
-      setAudioStatus({ isLoading: false, error: null });
-    } catch (error) {
-      setAudioStatus({ 
-        isLoading: false, 
-        error: error instanceof Error ? error.message : "Failed to load audio" 
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded) {
+          setDuration(status.durationMillis || 0);
+          setPlaybackPosition(status.positionMillis || 0);
+          setIsPlaying(status.isPlaying);
+        }
       });
+
+      setSound(sound);
+    } catch (error) {
+      console.error("Failed to load audio:", error);
+    } finally {
+      setIsLoading(false);
     }
-  }, [audioUri]);
+  }, [audioUri, volume]);
 
   useEffect(() => {
     if (visible && audioUri) {
       loadAudio();
     }
-
     return () => {
       if (sound) {
         sound.unloadAsync();
@@ -115,92 +97,40 @@ const VoiceNoteModal: React.FC<VoiceNoteModalProps> = ({
     };
   }, [visible, audioUri, loadAudio]);
 
-  const onPlaybackStatusUpdate = useCallback((status: Audio.SoundStatus) => {
-    if (!status.isLoaded) return;
-
-    setIsPlaying(status.isPlaying);
-    if (status.positionMillis !== undefined) {
-      setPlaybackPosition(status.positionMillis);
-    }
-
-    // Auto-stop at the end
-    if (status.didJustFinish) {
-      setIsPlaying(false);
-      setPlaybackPosition(0);
-    }
-  }, []);
-
-  const onPlayPausePress = async () => {
+  const handlePlayPause = async () => {
     if (!sound) return;
 
     try {
       if (isPlaying) {
         await sound.pauseAsync();
       } else {
-        if (playbackPosition >= duration) {
-          await sound.setPositionAsync(0);
-        }
         await sound.playAsync();
       }
     } catch (error) {
-      setAudioStatus({ 
-        isLoading: false, 
-        error: "Failed to play/pause audio" 
-      });
+      console.error("Failed to toggle play/pause:", error);
     }
   };
 
-  const onStopPress = async () => {
-    if (!sound) return;
-
-    try {
-      await sound.stopAsync();
-      await sound.setPositionAsync(0);
-      setPlaybackPosition(0);
-    } catch (error) {
-      setAudioStatus({ 
-        isLoading: false, 
-        error: "Failed to stop audio" 
-      });
+  const handleVolumeChange = async (value: number) => {
+    setVolume(value);
+    if (sound) {
+      await sound.setVolumeAsync(value);
     }
   };
 
-  const onSeekSliderComplete = async (value: number) => {
-    if (!sound) return;
+  const handleSpeedChange = async (value: number) => {
+    setPlaybackSpeed(value);
+    if (sound) {
+      await sound.setRateAsync(value, false);
+    }
+  };
 
-    try {
+  const handleSeek = async (value: number) => {
+    if (sound) {
       const newPosition = value * duration;
       await sound.setPositionAsync(newPosition);
       setPlaybackPosition(newPosition);
-    } catch (error) {
-      setAudioStatus({ 
-        isLoading: false, 
-        error: "Failed to seek audio" 
-      });
     }
-  };
-
-  const onSkipPress = async (skipAmount: number) => {
-    if (!sound) return;
-
-    try {
-      const newPosition = Math.max(0, Math.min(playbackPosition + skipAmount, duration));
-      await sound.setPositionAsync(newPosition);
-    } catch (error) {
-      setAudioStatus({ 
-        isLoading: false, 
-        error: "Failed to skip audio" 
-      });
-    }
-  };
-
-  const safeColors = {
-    card: colors?.card || defaultColors.card,
-    text: colors?.text || defaultColors.text,
-    inputBackground: colors?.inputBackground || defaultColors.inputBackground,
-    placeholder: colors?.placeholder || defaultColors.placeholder,
-    buttonText: colors?.buttonText || defaultColors.buttonText,
-    primary: colors?.primary || defaultColors.primary,
   };
 
   return (
@@ -211,223 +141,193 @@ const VoiceNoteModal: React.FC<VoiceNoteModalProps> = ({
       statusBarTranslucent
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-        <ErrorBoundary>
-          <View style={[styles.modalContent, { backgroundColor: safeColors.card }]}>
-            <TouchableOpacity onPress={onClose} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={30} color={safeColors.text} />
+        <View style={[styles.container, { backgroundColor: 'skyblue' }]}>
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={30} color={colors.text} />
             </TouchableOpacity>
+          </View>
 
-            <View style={styles.contentContainer}>
-              <TextInput
-                value={noteText}
-                onChangeText={onNoteTextChange}
-                style={[styles.input, { 
-                  backgroundColor: safeColors.inputBackground, 
-                  color: safeColors.text 
-                }]}
-                placeholder="Edit note"
-                placeholderTextColor={safeColors.placeholder}
-                multiline
-                maxLength={1000}
-              />
+          <View style={styles.content}>
+            <TextInput
+              style={[
+                styles.input,
+                { backgroundColor: colors.inputBackground, color: colors.text },
+              ]}
+              value={noteText}
+              onChangeText={onNoteTextChange}
+              placeholder="Edit note title"
+              placeholderTextColor={colors.placeholder}
+              multiline
+            />
 
-              {audioStatus.isLoading ? (
-                <ActivityIndicator size="large" color={safeColors.primary} />
-              ) : audioStatus.error ? (
-                <Text style={[styles.errorText, { color: 'red' }]}>
-                  {audioStatus.error}
-                </Text>
-              ) : (
-                <>
-                  <View style={styles.timeContainer}>
-                    <Text style={[styles.timeText, { color: safeColors.text }]}>
-                      {formatTime(playbackPosition)} / {formatTime(duration)}
-                    </Text>
-                  </View>
+            {isLoading ? (
+              <ActivityIndicator size="large" color={colors.primary} />
+            ) : (
+              <>
+                <View style={styles.time}>
+                  <Text style={[styles.timeText, { color: colors.text }]}>
+                    {formatTime(playbackPosition)} / {formatTime(duration)}
+                  </Text>
+                </View>
 
-                  <Slider
-                    value={duration > 0 ? playbackPosition / duration : 0}
-                    onSlidingComplete={onSeekSliderComplete}
-                    style={styles.progressSlider}
-                    minimumTrackTintColor={safeColors.primary}
-                  />
+                <Slider
+                  value={playbackPosition / duration}
+                  onSlidingComplete={handleSeek}
+                  minimumTrackTintColor={colors.primary}
+                  thumbTintColor={colors.primary}
+                  style={styles.slider}
+                />
 
-                  <View style={styles.controlsContainer}>
-                    <TouchableOpacity 
-                      onPress={() => onSkipPress(-5000)} 
-                      style={[styles.controlButton, { borderColor: safeColors.primary }]}
-                    >
-                      <Ionicons name="md-rewind" size={30} color={safeColors.text} />
-                    </TouchableOpacity>
+                <View style={styles.controls}>
+                  <TouchableOpacity onPress={() => handleSeek(-0.1)}>
+                    <Ionicons name="play-back" size={40} color={colors.text} />
+                  </TouchableOpacity>
 
-                    <TouchableOpacity 
-                      onPress={onPlayPausePress} 
-                      style={[styles.playButton, { backgroundColor: safeColors.primary }]}
-                    >
-                      <Ionicons 
-                        name={isPlaying ? "pause" : "play"} 
-                        size={40} 
-                        color={safeColors.buttonText} 
-                      />
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                      onPress={() => onSkipPress(5000)} 
-                      style={[styles.controlButton, { borderColor: safeColors.primary }]}
-                    >
-                      <Ionicons name="md-fastforward" size={30} color={safeColors.text} />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.speedControl}>
-                    <Text style={[styles.text, { color: safeColors.text }]}>
-                      Speed: {playbackSpeed}x
-                    </Text>
-                    <Slider
-                      minimumValue={0.5}
-                      maximumValue={2.0}
-                      step={0.25}
-                      value={playbackSpeed}
-                      onValueChange={value => {
-                        setPlaybackSpeed(value);
-                        sound?.setRateAsync(value, false);
-                      }}
-                      style={styles.speedSlider}
-                      minimumTrackTintColor={safeColors.primary}
+                  <TouchableOpacity
+                    onPress={handlePlayPause}
+                    style={[
+                      styles.playButton,
+                      { backgroundColor: colors.primary },
+                    ]}
+                  >
+                    <Ionicons
+                      name={isPlaying ? "pause" : "play"}
+                      size={50}
+                      color={colors.buttonText}
                     />
-                  </View>
-                </>
-              )}
+                  </TouchableOpacity>
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity 
-                  onPress={onUpdateNote} 
-                  style={[styles.actionButton, { backgroundColor: safeColors.primary }]}
-                >
-                  <Text style={[styles.actionButtonText, { color: safeColors.buttonText }]}>
-                    Update Note
+                  <TouchableOpacity onPress={() => handleSeek(0.1)}>
+                    <Ionicons
+                      name="play-forward"
+                      size={40}
+                      color={colors.text}
+                    />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.volumeControl}>
+                  <Text style={[styles.label, { color: colors.text }]}>
+                    Volume
                   </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  onPress={onDeleteNote} 
-                  style={[styles.actionButton, styles.deleteButton]}
-                >
-                  <Text style={[styles.actionButtonText, { color: 'white' }]}>
-                    Delete Note
+                  <Slider
+                    value={volume}
+                    onValueChange={handleVolumeChange}
+                    minimumTrackTintColor={colors.primary}
+                    thumbTintColor={colors.primary}
+                    style={styles.slider}
+                  />
+                </View>
+
+                <View style={styles.speedControl}>
+                  <Text style={[styles.label, { color: colors.text }]}>
+                    Speed: {playbackSpeed.toFixed(1)}x
                   </Text>
-                </TouchableOpacity>
-              </View>
+                  <Slider
+                    minimumValue={0.5}
+                    maximumValue={2.0}
+                    step={0.1}
+                    value={playbackSpeed}
+                    onSlidingComplete={handleSpeedChange}
+                    minimumTrackTintColor={colors.primary}
+                    thumbTintColor={colors.primary}
+                    style={styles.slider}
+                  />
+                </View>
+              </>
+            )}
+
+            <View style={styles.actions}>
+              <TouchableOpacity
+                style={[
+                  styles.actionButton,
+                  { backgroundColor: colors.primary },
+                ]}
+                onPress={onUpdateNote}
+              >
+                <Text style={styles.actionText}>Update</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.accent }]}
+                onPress={onDeleteNote}
+              >
+                <Text style={styles.actionText}>Delete</Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </ErrorBoundary>
+        </View>
       </TouchableWithoutFeedback>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  modalContent: {
+  container: {
     flex: 1,
     padding: 20,
   },
-  contentContainer: {
-    flex: 1,
-    marginTop: 60,
-    alignItems: 'center',
+  header: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
   },
-  backButton: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
+  closeButton: {
     padding: 10,
-    zIndex: 1,
+  },
+  content: {
+    flex: 1,
+    justifyContent: "space-between",
   },
   input: {
-    width: '100%',
+    borderRadius: 10,
     padding: 15,
-    borderRadius: 15,
     fontSize: 16,
-    marginBottom: 20,
-    minHeight: 100,
-    textAlignVertical: 'top',
+    marginVertical: 20,
   },
-  timeContainer: {
-    width: '100%',
-    alignItems: 'center',
+  time: {
+    alignItems: "center",
     marginVertical: 10,
   },
   timeText: {
     fontSize: 16,
-    fontWeight: '500',
   },
-  progressSlider: {
-    width: '100%',
-    height: 40,
+  slider: {
+    width: "100%",
+    marginVertical: 10,
   },
-  controlsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  controlButton: {
-    padding: 12,
-    marginHorizontal: 20,
-    borderWidth: 2,
-    borderRadius: 50,
-    width: 60,
-    height: 60,
-    justifyContent: 'center',
-    alignItems: 'center',
+  controls: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "center",
   },
   playButton: {
-    padding: 15,
     borderRadius: 50,
-    width: 80,
-    height: 80,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginHorizontal: 30,
+    padding: 20,
   },
-  speedControl: {
-    width: '100%',
-    alignItems: 'center',
+  volumeControl: {
     marginVertical: 20,
   },
-  speedSlider: {
-    width: '80%',
-    height: 40,
+  speedControl: {
+    marginVertical: 20,
   },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 'auto',
-    paddingVertical: 20,
-  },
-  actionButton: {
-    paddingVertical: 15,
-    paddingHorizontal: 25,
-    borderRadius: 30,
-    width: '45%',
-    alignItems: 'center',
-  },
-  deleteButton: {
-    backgroundColor: '#FF3B30',
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  text: {
+  label: {
     fontSize: 16,
     marginBottom: 10,
   },
-  errorText: {
-    fontSize: 16,
-    textAlign: 'center',
+  actions: {
+    flexDirection: "row",
+    justifyContent: "space-around",
     marginVertical: 20,
+  },
+  actionButton: {
+    padding: 15,
+    borderRadius: 10,
+  },
+  actionText: {
+    color: defaultColors.buttonText,
+    fontWeight: "bold",
+    textAlign: "center",
   },
 });
 

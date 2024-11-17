@@ -312,12 +312,12 @@ const RecordsScreen: React.FC = () => {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: 'skyblue' }]}>
       <StatusBar barStyle="light-content" />
       
       {/* Search Bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search" size={20} color={colors.text} style={styles.searchIcon} />
+        {/* <Ionicons name="search" size={20} color={colors.text} style={styles.searchIcon} /> */}
         <TextInput
           style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text }]}
           placeholder="Search notes..."
@@ -352,47 +352,58 @@ const RecordsScreen: React.FC = () => {
       )}
 
       {/* Recording Controls */}
-      <View style={styles.recordControls}>
-        {recordingState.isRecording && (
-          <>
-            <Text style={[styles.timerText, { color: colors.text }]}>
-              {formatDuration(recordingState.duration)}
-            </Text>
-            {loading.recording && (
-              <ActivityIndicator size="small" color={colors.primary} style={styles.recordingLoader} />
-            )}
-          </>
-        )}
-        <View style={styles.recordButtonsContainer}>
-          {recordingState.isRecording && (
-            <TouchableOpacity
-              style={[styles.controlButton, { backgroundColor: colors.primary }]}
-              onPress={handlePauseRecording}
-              disabled={loading.recording}
-            >
-              <Ionicons
-                name={recordingState.isPaused ? "play" : "pause"}
-                size={24}
-                color="#FFF"
-              />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[
-              styles.recordButton,
-              { backgroundColor: recordingState.isRecording ? "#E53935" : colors.primary }
-            ]}
-            onPress={recordingState.isRecording ? handleStopRecording : handleStartRecording}
-            disabled={loading.recording}
-          >
-            <Ionicons
-              name={recordingState.isRecording ? "square" : "mic"}
-              size={24}
-              color="#FFF"
-            />
-          </TouchableOpacity>
-        </View>
-      </View>
+<View style={styles.recordControls}>
+  {recordingState.isRecording && (
+    <>
+      <Text style={[styles.timerText, { color: colors.text }]}>
+        {formatDuration(recordingState.duration)}
+      </Text>
+      {loading.recording && (
+        <ActivityIndicator size="small" color={colors.primary} style={styles.recordingLoader} />
+      )}
+    </>
+  )}
+  <View style={styles.recordButtonsContainer}>
+    {/* Show Pause button when recording is in progress */}
+    {recordingState.isRecording && !recordingState.isPaused && (
+      <TouchableOpacity
+        style={[styles.controlButton, { backgroundColor: colors.primary }]}
+        onPress={handlePauseRecording}
+        disabled={loading.recording}
+      >
+        <Ionicons name="pause" size={24} color="#FFF" />
+      </TouchableOpacity>
+    )}
+
+    {/* Show Play button when recording is paused */}
+    {recordingState.isRecording && recordingState.isPaused && (
+      <TouchableOpacity
+        style={[styles.controlButton, { backgroundColor: colors.primary }]}
+        onPress={handlePauseRecording}
+        disabled={loading.recording}
+      >
+        <Ionicons name="play" size={24} color="#FFF" />
+      </TouchableOpacity>
+    )}
+
+    {/* Show Start/Stop recording button */}
+    <TouchableOpacity
+      style={[
+        styles.recordButton,
+        { backgroundColor: recordingState.isRecording ? "#E53935" : colors.primary }
+      ]}
+      onPress={recordingState.isRecording ? handleStopRecording : handleStartRecording}
+      disabled={loading.recording}
+    >
+      <Ionicons
+        name={recordingState.isRecording ? "square" : "mic"}
+        size={24}
+        color="#FFF"
+      />
+    </TouchableOpacity>
+  </View>
+</View>
+
 
       {/* Save Recording Modal */}
       <Modal
@@ -462,6 +473,7 @@ const RecordsScreen: React.FC = () => {
           onNoteTextChange={(text) => setSelectedNote(prev => prev ? { ...prev, text } : null)}
           onUpdateNote={() => handleUpdateNote(selectedNote!)}
           onDeleteNote={() => handleDeleteNote(selectedNote!.id)}
+          uri={selectedNote.uri}
         />
       )}
     </View>
@@ -472,6 +484,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
+    backgroundColor: 'coral',
+    paddingHorizontal: 10,
+    gap: 10,
+    // paddingVertical: 10,
+    
   },
   searchContainer: {
     flexDirection: "row",
@@ -504,8 +521,9 @@ const styles = StyleSheet.create({
   noteContainer: {
     flexDirection: "row",
     padding: 16,
-    borderBottomWidth: 1,
-    borderColor: "#ccc",
+    gap: 10,
+    borderBottomWidth: 5,
+    borderColor: "skyblue",
     alignItems: "center",
   },
   noteContent: {
