@@ -7,19 +7,25 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  ActivityIndicator,
   Modal,
+  ActivityIndicator,
   Platform,
-  StatusBar,
 } from "react-native";
-import * as FileSystem from "expo-file-system";
-
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Audio } from "expo-av";
 import { Ionicons } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "@react-navigation/native";
-import { VoiceNote } from "../types";
-import VoiceNoteModal from "./VoiceNoteModal";
+import Swipeable from "react-native-gesture-handler/Swipeable";
+
+interface VoiceNote {
+  id: string;
+  text: string;
+  uri: string;
+  date: string;
+  time: string;
+  duration: number;
+}
 
 interface RecordingState {
   isRecording: boolean;
@@ -28,48 +34,49 @@ interface RecordingState {
 }
 
 const STORAGE_KEY = "voiceNotes";
+const MAX_RECORDING_DURATION = 600; // 10 minutes
 
 const RecordsScreen: React.FC = () => {
   const { colors } = useTheme();
   const [voiceNotes, setVoiceNotes] = useState<VoiceNote[]>([]);
+  const [selectedNote, setSelectedNote] = useState<VoiceNote | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [actionModalVisible, setActionModalVisible] = useState(false);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingState, setRecordingState] = useState<RecordingState>({
     isRecording: false,
     duration: 0,
     isPaused: false,
   });
-  const [loading, setLoading] = useState({
-    notes: false,
-    recording: false,
-  });
-  const [modalState, setModalState] = useState({
-    recording: false,
-    note: false,
-  });
-  const [selectedNote, setSelectedNote] = useState<VoiceNote | null>(null);
-  const [newTitle, setNewTitle] = useState("");
+  const [currentSound, setCurrentSound] = useState<Audio.Sound | null>(null);
 
   // Initialize audio session
   useEffect(() => {
     setupAudioSession();
-    return () => cleanupAudioSession();
+    return () => {
+      cleanupAudioSession();
+    };
   }, []);
 
-  // Load notes on mount
+  // Load notes from storage
   useEffect(() => {
     loadNotes();
   }, []);
 
-  // Recording timer
+  // Recording duration timer
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (recordingState.isRecording && !recordingState.isPaused) {
       interval = setInterval(() => {
-        setRecordingState(prev => ({
-          ...prev,
-          duration: prev.duration + 1
-        }));
+        setRecordingState((prev) => {
+          if (prev.duration >= MAX_RECORDING_DURATION) {
+            handleStopRecording();
+            return prev;
+          }
+          return { ...prev, duration: prev.duration + 1 };
+        });
       }, 1000);
     }
     return () => clearInterval(interval);
@@ -85,7 +92,7 @@ const RecordsScreen: React.FC = () => {
         playThroughEarpieceAndroid: false,
       });
     } catch (error) {
-      handleError("Failed to setup audio session", error);
+      Alert.alert("Error", "Failed to initialize audio session.");
     }
   };
 
@@ -94,31 +101,25 @@ const RecordsScreen: React.FC = () => {
       if (recording) {
         await recording.stopAndUnloadAsync();
       }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-      });
+      if (currentSound) {
+        await currentSound.unloadAsync();
+      }
     } catch (error) {
-      handleError("Failed to cleanup audio session", error);
+      console.error("Cleanup error:", error);
     }
   };
 
-  const handleError = (message: string, error: any) => {
-    console.error(message, error);
-    Alert.alert("Error", message);
-  };
-
   const loadNotes = async () => {
-    setLoading(prev => ({ ...prev, notes: true }));
+    setLoading(true);
     try {
       const storedNotes = await AsyncStorage.getItem(STORAGE_KEY);
       if (storedNotes) {
         setVoiceNotes(JSON.parse(storedNotes));
       }
     } catch (error) {
-      handleError("Failed to load notes", error);
+      Alert.alert("Error", "Failed to load notes.");
     } finally {
-      setLoading(prev => ({ ...prev, notes: false }));
+      setLoading(false);
     }
   };
 
@@ -126,69 +127,33 @@ const RecordsScreen: React.FC = () => {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(notes));
     } catch (error) {
-      handleError("Failed to save notes", error);
+      Alert.alert("Error", "Failed to save notes.");
     }
   };
 
   const handleStartRecording = async () => {
-    setLoading(prev => ({ ...prev, recording: true }));
     try {
       const { status } = await Audio.requestPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Microphone access is required to record audio.",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Settings", onPress: () => Platform.OS === "ios" ? Linking.openURL("app-settings:") : Linking.openSettings() }
-          ]
-        );
+        Alert.alert("Permission required", "Please grant microphone access");
         return;
       }
 
-      const recordingOptions = {
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        android: {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
-          extension: '.m4a',
-        },
-        ios: {
-          ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
-          extension: '.m4a',
-        },
-      };
-
-      const { recording } = await Audio.Recording.createAsync(recordingOptions);
-      setRecording(recording);
-      setRecordingState({
-        isRecording: true,
-        duration: 0,
-        isPaused: false,
-      });
+      const newRecording = new Audio.Recording();
+      await newRecording.prepareToRecordAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      await newRecording.startAsync();
+      setRecording(newRecording);
+      setRecordingState({ isRecording: true, duration: 0, isPaused: false });
     } catch (error) {
-      handleError("Failed to start recording", error);
-    } finally {
-      setLoading(prev => ({ ...prev, recording: false }));
-    }
-  };
-
-  const handlePauseRecording = async () => {
-    if (!recording) return;
-    try {
-      if (recordingState.isPaused) {
-        await recording.startAsync();
-      } else {
-        await recording.pauseAsync();
-      }
-      setRecordingState(prev => ({ ...prev, isPaused: !prev.isPaused }));
-    } catch (error) {
-      handleError("Failed to pause/resume recording", error);
+      Alert.alert("Error", "Failed to start recording.");
     }
   };
 
   const handleStopRecording = async () => {
     if (!recording) return;
-    setLoading(prev => ({ ...prev, recording: true }));
+
     try {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
@@ -197,285 +162,240 @@ const RecordsScreen: React.FC = () => {
       const date = new Date();
       const newNote: VoiceNote = {
         id: Date.now().toString(),
-        text: "Untitled Note",
+        text: `Note ${voiceNotes.length + 1}`,
         uri,
         date: date.toLocaleDateString(),
         time: date.toLocaleTimeString(),
         duration: recordingState.duration,
       };
 
-      setSelectedNote(newNote);
-      setModalState(prev => ({ ...prev, recording: true }));
-      setNewTitle("");
-      
       const updatedNotes = [newNote, ...voiceNotes];
       setVoiceNotes(updatedNotes);
       await saveNotes(updatedNotes);
+      setSelectedNote(newNote);
+      setModalVisible(true);
     } catch (error) {
-      handleError("Failed to stop recording", error);
+      Alert.alert("Error", "Failed to save recording.");
     } finally {
       setRecording(null);
-      setRecordingState({
-        isRecording: false,
-        duration: 0,
-        isPaused: false,
-      });
-      setLoading(prev => ({ ...prev, recording: false }));
+      setRecordingState({ isRecording: false, duration: 0, isPaused: false });
     }
   };
 
-  const handleUpdateNote = useCallback(async (note: VoiceNote) => {
+  const playAudio = async (uri: string) => {
     try {
-      const updatedNotes = voiceNotes.map(n => 
-        n.id === note.id ? note : n
+      if (currentSound) {
+        await currentSound.unloadAsync();
+      }
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri },
+        { shouldPlay: true }
+      );
+      setCurrentSound(sound);
+
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          sound.unloadAsync();
+          setCurrentSound(null);
+        }
+      });
+    } catch (error) {
+      Alert.alert("Error", "Failed to play audio.");
+    }
+  };
+
+  const deleteNote = async (noteId: string) => {
+    try {
+      const noteToDelete = voiceNotes.find((note) => note.id === noteId);
+      if (noteToDelete) {
+        await FileSystem.deleteAsync(noteToDelete.uri).catch(() => {});
+      }
+
+      const updatedNotes = voiceNotes.filter((note) => note.id !== noteId);
+      setVoiceNotes(updatedNotes);
+      await saveNotes(updatedNotes);
+      setActionModalVisible(false);
+    } catch (error) {
+      Alert.alert("Error", "Failed to delete note.");
+    }
+  };
+
+  const editNote = async (newText: string) => {
+    if (!selectedNote) return;
+
+    try {
+      const updatedNotes = voiceNotes.map((note) =>
+        note.id === selectedNote.id ? { ...note, text: newText } : note
       );
       setVoiceNotes(updatedNotes);
       await saveNotes(updatedNotes);
-      setModalState(prev => ({ ...prev, note: false }));
+      setModalVisible(false);
+      setSelectedNote(null);
     } catch (error) {
-      handleError("Failed to update note", error);
+      Alert.alert("Error", "Failed to update note.");
     }
-  }, [voiceNotes]);
+  };
 
-  const handleDeleteNote = useCallback((noteId: string) => {
-    // Ask for confirmation before deleting
-    Alert.alert(
-      "Confirm Deletion",
-      "Are you sure you want to delete this note?",
-      [
-        {
-          text: "Cancel",
-          style: "cancel", // Cancels the action and closes the alert
-        },
-        {
-          text: "OK", // Proceed with deletion if the user confirms
-          onPress: async () => {
-            try {
-              // Find the note to delete
-              const noteToDelete = voiceNotes.find(n => n.id === noteId);
-              if (noteToDelete?.uri) {
-                // Delete the audio file if a URI exists
-                await FileSystem.deleteAsync(noteToDelete.uri, { idempotent: true });
-              }
-  
-              // Update the voiceNotes state to remove the deleted note
-              setVoiceNotes(prevNotes => {
-                const updatedNotes = prevNotes.filter(n => n.id !== noteId);
-                saveNotes(updatedNotes); // Save updated list to storage
-                return updatedNotes;
-              });
-  
-              // Close the modal after deletion
-              setModalState(prev => ({ ...prev, note: false }));
-              setTimeout(()=>{
-                Alert.alert("Voice record deleted successfully!!!")
-              }, 400)
-            } catch (error) {
-              handleError("Failed to delete note", error);
-            }
-          }
-        }
-      ],
-      { cancelable: true } // Allow closing the alert by tapping outside
+  const renderRightActions = (noteId: string) => {
+    return (
+      <TouchableOpacity
+        style={styles.deleteAction}
+        onPress={() => deleteNote(noteId)}
+      >
+        <Ionicons name="trash" size={24} color="white" />
+      </TouchableOpacity>
     );
-  }, [voiceNotes, setVoiceNotes, saveNotes]);
-  
+  };
+
+  const renderNoteItem = ({ item }: { item: VoiceNote }) => (
+    <Swipeable renderRightActions={() => renderRightActions(item.id)}>
+      <TouchableOpacity
+        style={[styles.noteContainer, { backgroundColor: colors.card }]}
+        onPress={() => playAudio(item.uri)}
+        onLongPress={() => {
+          setSelectedNote(item);
+          setActionModalVisible(true);
+        }}
+      >
+        <View style={styles.noteContent}>
+          <Text style={[styles.noteText, { color: colors.text }]}>
+            {item.text}
+          </Text>
+          <Text style={[styles.noteDetails, { color: colors.text }]}>
+            {item.date} • {formatDuration(item.duration)}
+          </Text>
+        </View>
+        <Ionicons name="play-circle" size={24} color={colors.text} />
+      </TouchableOpacity>
+    </Swipeable>
+  );
 
   const formatDuration = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
-    return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
   };
 
-  const renderNoteItem = useCallback(({ item }: { item: VoiceNote }) => (
-    <TouchableOpacity
-      style={[styles.noteContainer, { backgroundColor: colors.card }]}
-      onPress={() => {
-        setSelectedNote(item);
-        setModalState(prev => ({ ...prev, note: true }));
-      }}
-    >
-      <View style={styles.noteContent}>
-        <Text style={[styles.noteText, { color: colors.text }]} numberOfLines={1}>
-          {item.text}
-        </Text>
-        <Text style={[styles.noteDetails, { color: colors.text }]}>
-          {`${item.date} ${item.time} • ${formatDuration(item.duration || 0)}`}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={24} color={colors.text} />
-    </TouchableOpacity>
-  ), [colors]);
-
-  const filteredNotes = voiceNotes.filter(note =>
-    note.text.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
   return (
-    <View style={[styles.container, { backgroundColor: 'skyblue' }]}>
-      <StatusBar barStyle="light-content" />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <TextInput
+        style={[styles.searchInput, { backgroundColor: colors.card }]}
+        placeholder="Search Notes"
+        placeholderTextColor={colors.text}
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
       
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        {/* <Ionicons name="search" size={20} color={colors.text} style={styles.searchIcon} /> */}
-        <TextInput
-          style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text }]}
-          placeholder="Search notes..."
-          placeholderTextColor={colors.placeholder}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery("")}>
-            <Ionicons name="close-circle" size={20} color={colors.text} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Voice Notes List */}
-      {loading.notes ? (
-        <ActivityIndicator size="large" color={colors.primary} style={styles.loader} />
-      ) : filteredNotes.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="mic-outline" size={48} color={colors.text} />
-          <Text style={[styles.emptyText, { color: colors.text }]}>
-            {searchQuery ? "No matching recordings found" : "Start recording your first note"}
-          </Text>
-        </View>
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.primary} />
       ) : (
         <FlatList
-          data={filteredNotes}
-          keyExtractor={item => item.id}
+          data={voiceNotes.filter((note) =>
+            note.text.toLowerCase().includes(searchQuery.toLowerCase())
+          )}
           renderItem={renderNoteItem}
-          contentContainerStyle={styles.listContent}
+          keyExtractor={(item) => item.id}
+          ListEmptyComponent={
+            <Text style={[styles.emptyText, { color: colors.text }]}>
+              No notes available. Start recording!
+            </Text>
+          }
         />
       )}
 
-      {/* Recording Controls */}
-<View style={styles.recordControls}>
-  {recordingState.isRecording && (
-    <>
-      <Text style={[styles.timerText, { color: colors.text }]}>
-        {formatDuration(recordingState.duration)}
-      </Text>
-      {loading.recording && (
-        <ActivityIndicator size="small" color={colors.primary} style={styles.recordingLoader} />
-      )}
-    </>
-  )}
-  <View style={styles.recordButtonsContainer}>
-    {/* Show Pause button when recording is in progress */}
-    {recordingState.isRecording && !recordingState.isPaused && (
+      {/* Recording Button */}
       <TouchableOpacity
-        style={[styles.controlButton, { backgroundColor: colors.primary }]}
-        onPress={handlePauseRecording}
-        disabled={loading.recording}
+        style={[
+          styles.recordButton,
+          {
+            backgroundColor: recordingState.isRecording ? "red" : colors.primary,
+          },
+        ]}
+        onPress={recordingState.isRecording ? handleStopRecording : handleStartRecording}
       >
-        <Ionicons name="pause" size={24} color="#FFF" />
+        <Ionicons
+          name={recordingState.isRecording ? "stop" : "mic"}
+          size={24}
+          color="white"
+        />
+        {recordingState.isRecording && (
+          <Text style={styles.recordingTimer}>
+            {formatDuration(recordingState.duration)}
+          </Text>
+        )}
       </TouchableOpacity>
-    )}
 
-    {/* Show Play button when recording is paused */}
-    {recordingState.isRecording && recordingState.isPaused && (
-      <TouchableOpacity
-        style={[styles.controlButton, { backgroundColor: colors.primary }]}
-        onPress={handlePauseRecording}
-        disabled={loading.recording}
-      >
-        <Ionicons name="play" size={24} color="#FFF" />
-      </TouchableOpacity>
-    )}
-
-    {/* Show Start/Stop recording button */}
-    <TouchableOpacity
-      style={[
-        styles.recordButton,
-        { backgroundColor: recordingState.isRecording ? "#E53935" : colors.primary }
-      ]}
-      onPress={recordingState.isRecording ? handleStopRecording : handleStartRecording}
-      disabled={loading.recording}
-    >
-      <Ionicons
-        name={recordingState.isRecording ? "square" : "mic"}
-        size={24}
-        color="#FFF"
-      />
-    </TouchableOpacity>
-  </View>
-</View>
-
-
-      {/* Save Recording Modal */}
+      {/* Action Modal */}
       <Modal
-        visible={modalState.recording}
+        visible={actionModalVisible}
         transparent
         animationType="slide"
-        statusBarTranslucent
+        onRequestClose={() => setActionModalVisible(false)}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setModalState(prev => ({ ...prev, recording: false }))}
-        >
-          <View
-            style={[styles.modalContent, { backgroundColor: colors.card }]}
-            onStartShouldSetResponder={() => true}
-          >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
             <Text style={[styles.modalTitle, { color: colors.text }]}>
-              Save Recording
+              What would you like to do?
             </Text>
-            <TextInput
-              style={[styles.titleInput, {
-                backgroundColor: colors.background,
-                color: colors.text,
-              }]}
-              placeholder="Enter title"
-              placeholderTextColor={colors.placeholder}
-              value={newTitle}
-              onChangeText={setNewTitle}
-              autoFocus
-            />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.modalButton, { borderColor: colors.border }]}
-                onPress={() => setModalState(prev => ({ ...prev, recording: false }))}
-              >
-                <Text style={{ color: colors.text }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, {
-                  backgroundColor: colors.primary,
-                  borderColor: colors.primary,
-                }]}
-                onPress={() => {
-                  if (selectedNote && newTitle.trim()) {
-                    handleUpdateNote({
-                      ...selectedNote,
-                      text: newTitle.trim(),
-                    });
-                    setModalState(prev => ({ ...prev, recording: false }));
-                  }
-                }}
-              >
-                <Text style={{ color: "#FFF" }}>Save</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.primary }]}
+              onPress={() => {
+                setActionModalVisible(false);
+                setModalVisible(true);
+              }}
+            >
+              <Text style={{ color: "white" }}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: "red" }]}
+              onPress={() => deleteNote(selectedNote?.id || "")}
+            >
+              <Text style={{ color: "white" }}>Delete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.border }]}
+              onPress={() => setActionModalVisible(false)}
+            >
+              <Text style={{ color: "white" }}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
-      {/* Voice Note Modal */}
-      {selectedNote && (
-        <VoiceNoteModal
-          visible={modalState.note}
-          onClose={() => setModalState(prev => ({ ...prev, note: false }))}
-          noteText={selectedNote.text}
-          onNoteTextChange={(text) => setSelectedNote(prev => prev ? { ...prev, text } : null)}
-          onUpdateNote={() => handleUpdateNote(selectedNote!)}
-          onDeleteNote={() => handleDeleteNote(selectedNote!.id)}
-          uri={selectedNote.uri}
-        />
-      )}
+      {/* Edit Note Modal */}
+      <Modal
+        visible={modalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+            <TextInput
+              style={[styles.modalInput, { color: colors.text }]}
+              value={selectedNote?.text || ""}
+              onChangeText={(text) =>
+                setSelectedNote(selectedNote ? { ...selectedNote, text } : null)
+              }
+              placeholder="Enter note title"
+              placeholderTextColor={colors.text}
+            />
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.primary }]}
+              onPress={() => editNote(selectedNote?.text || "")}
+            >
+              <Text style={{ color: "white" }}>Save</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: colors.border }]}
+              onPress={() => setModalVisible(false)}
+            >
+              <Text style={{ color: "white" }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -483,51 +403,24 @@ const RecordsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,
-    backgroundColor: 'coral',
-    paddingHorizontal: 10,
-    gap: 10,
-    // paddingVertical: 10,
-    
-  },
-  searchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
     padding: 10,
   },
-  searchIcon: {
-    marginRight: 8,
-  },
   searchInput: {
-    flex: 1,
-    height: 40,
-    paddingHorizontal: 10,
-    borderRadius: 20,
-    fontSize: 16,
-  },
-  loader: {
-    marginTop: 20,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  emptyText: {
-    fontSize: 16,
-    textAlign: "center",
-    marginTop: 10,
+    padding: 10,
+    borderRadius: 10,
+    marginBottom: 10,
   },
   noteContainer: {
     flexDirection: "row",
-    padding: 16,
-    gap: 10,
-    borderBottomWidth: 5,
-    borderColor: "skyblue",
+    justifyContent: "space-between",
     alignItems: "center",
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
   },
   noteContent: {
     flex: 1,
+    marginRight: 10,
   },
   noteText: {
     fontSize: 16,
@@ -535,44 +428,17 @@ const styles = StyleSheet.create({
   },
   noteDetails: {
     fontSize: 12,
-    color: "#888",
+    marginTop: 4,
   },
-  listContent: {
-    paddingBottom: 100,
+  emptyText: {
+    textAlign: "center",
+    marginTop: 20,
   },
-  recordControls: {
-    position: "absolute",
-    bottom: 20,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-  },
-  recordButtonsContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  controlButton: {
-    padding: 16,
-    borderRadius: 50,
-    margin: 8,
-  },
-  recordButton: {
-    padding: 20,
-    borderRadius: 50,
-    backgroundColor: "#E53935",
-  },
-  timerText: {
-    fontSize: 20,
-    marginBottom: 10,
-  },
-  recordingLoader: {
-    marginLeft: 10,
-  },
-  modalOverlay: {
+  modalContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
   modalContent: {
     width: "80%",
@@ -581,26 +447,54 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-  titleInput: {
-    height: 40,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
     marginBottom: 20,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    textAlign: "center",
   },
   modalButton: {
-    padding: 10,
-    borderWidth: 1,
-    borderRadius: 8,
-    flex: 1,
+    padding: 12,
+    marginVertical: 5,
     alignItems: "center",
+    borderRadius: 5,
+  },
+  modalInput: {
+    borderBottomWidth: 1,
+    marginBottom: 20,
+    padding: 8,
+    fontSize: 16,
+  },
+  recordButton: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: "center",
+    alignItems: "center",
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  recordingTimer: {
+    color: "white",
+    fontSize: 12,
+    marginTop: 4,
+    position: "absolute",
+    bottom: -20,
+  },
+  deleteAction: {
+    backgroundColor: "red",
+    justifyContent: "center",
+    alignItems: "center",
+    width: 70,
+    height: "100%",
+    borderTopRightRadius: 10,
+    borderBottomRightRadius: 10,
   },
 });
 
