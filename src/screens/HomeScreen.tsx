@@ -28,7 +28,7 @@ const HomeScreen: React.FC = () => {
             key={index}
             style={({ pressed }) => [
               styles.card,
-              { backgroundColor: pressed ? '#444' : '#999' },
+              { backgroundColor: pressed ? '#456' : '#123' },
             ]}
             onPress={() => navigation.navigate(button.navigateTo)}
           >
@@ -68,20 +68,20 @@ const styles = StyleSheet.create({
     marginVertical: 15,
     borderRadius: 10,
     width: '80%',
-    elevation: 5, // For Android shadow
-    shadowColor: '#000', // For iOS shadow
+    elevation: 5,
+    shadowColor: '#000', 
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.3,
     shadowRadius: 10,
   },
   cardText: {
-    color: '#000',
+    color: 'skyblue',
     fontSize: 18,
     fontWeight: '600',
   },
   icon: {
     marginRight: 10,
-    color: '#000'
+    color: 'skyblue'
   },
 });
 

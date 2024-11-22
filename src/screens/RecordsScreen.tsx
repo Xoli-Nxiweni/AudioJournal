@@ -21,7 +21,7 @@ import Swipeable from "react-native-gesture-handler/Swipeable";
 // Interfaces
 interface VoiceNote {
   id: string;
-  text: string;
+  text: string;32222.
   uri: string;
   date: string;
   time: string;
@@ -425,7 +425,7 @@ const RecordsScreen: React.FC = () => {
 
   // Main Render
   return (
-    <View style={[styles.container, { backgroundColor: "skyblue" }]}>
+    <View style={[styles.container, { backgroundColor: 'whitesmoke' }]}>
       <TextInput
         style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text }]}
         placeholder="Search Notes"
@@ -435,7 +435,7 @@ const RecordsScreen: React.FC = () => {
       />
       
       {loading ? (
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color={'coral'} />
       ) : (
         <FlatList
           data={voiceNotes.filter((note) =>

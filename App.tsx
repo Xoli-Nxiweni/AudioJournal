@@ -5,7 +5,6 @@ import 'react-native-gesture-handler';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TouchableOpacity, StyleSheet, Alert, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-
 import HomeScreen from './src/screens/HomeScreen';
 import RecordsScreen from './src/screens/RecordsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
@@ -51,7 +50,7 @@ const App: React.FC = () => {
               headerStyle: {
                 backgroundColor: 'skyblue',
               },
-              headerTintColor: '#333',
+              headerTintColor: '#000',
               headerTitleStyle: {
                 fontWeight: 'bold',
                 fontSize: 20,
