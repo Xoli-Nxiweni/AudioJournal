@@ -152,7 +152,7 @@ const AuthScreen: React.FC = () => {
             <Pressable
               style={({ pressed }) => [
                 styles.authButton,
-                { backgroundColor: pressed ? '#444' : '#555' }
+                { backgroundColor: pressed ? '#123' : 'skyblue' }
               ]}
               onPress={handleAuthAction}
             >

@@ -1,26 +1,27 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { 
+  REACT_APP_FIREBASE_API_KEY,
+  REACT_APP_FIREBASE_AUTH_DOMAIN,
+  REACT_APP_FIREBASE_PROJECT_ID,
+  REACT_APP_FIREBASE_STORAGE_BUCKET,
+  REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  REACT_APP_FIREBASE_APP_ID,
+} from '@env';
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "AIzaSyBbhFe7hevcmKN155c6nKh8oAoo52MKc3I",
-  authDomain: "audiojournal-18399.firebaseapp.com",
-  projectId: "audiojournal-18399",
-  storageBucket: "audiojournal-18399.firebasestorage.app",
-  messagingSenderId: "777793270586",
-  appId: "1:777793270586:web:990bcddba63879361f5603",
-  measurementId: "G-S1L8L4BKSS"
-  
+  apiKey: REACT_APP_FIREBASE_API_KEY,
+  authDomain: REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: REACT_APP_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
-// export const app = initializeApp(firebaseConfig);
-// const analytics = getAnalytics(app);
+console.log(firebaseConfig.apiKey, '1')
+console.log(firebaseConfig.authDomain, '2')
+console.log(firebaseConfig.projectId, '3')
+console.log(firebaseConfig.storageBucket, '4')
 
-const app = initializeApp(firebaseConfig); // Ensure this line is called
-export const auth = getAuth(app); // Pass the `app` object here
+const app = initializeApp(firebaseConfig);
+export const auth = getAuth(app);

@@ -1,10 +1,23 @@
 import React, { createContext, useContext, useState } from 'react';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth } from '../config/firebase'
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut, 
+  onAuthStateChanged, 
+  User 
+} from 'firebase/auth';
+import { auth } from '../config/firebase';
+
+interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
 
 interface AuthContextType {
   isAuthenticated: boolean;
-  user: { email: string } | null;
+  user: UserProfile | null;
   login: (email: string, password: string) => Promise<boolean>;
   signup: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
@@ -26,16 +39,27 @@ type ProviderProps = {
 
 export const AuthProvider: React.FC<ProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+
+  // Helper function to map Firebase User to UserProfile
+  const mapFirebaseUserToUserProfile = (firebaseUser: User | null): UserProfile | null => {
+    if (!firebaseUser) return null;
+    return {
+      uid: firebaseUser.uid,
+      email: firebaseUser.email,
+      displayName: firebaseUser.displayName,
+      photoURL: firebaseUser.photoURL,
+    };
+  };
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       setIsAuthenticated(true);
-      setUser({ email: userCredential.user.email! });
+      setUser(mapFirebaseUserToUserProfile(userCredential.user));
       return true;
     } catch (error) {
-      console.error("Login error:", error);
+      console.error('Login error:', error);
       return false;
     }
   };
@@ -44,10 +68,10 @@ export const AuthProvider: React.FC<ProviderProps> = ({ children }) => {
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       setIsAuthenticated(true);
-      setUser({ email: userCredential.user.email! });
+      setUser(mapFirebaseUserToUserProfile(userCredential.user));
       return true;
     } catch (error) {
-      console.error("Signup error:", error);
+      console.error('Signup error:', error);
       return false;
     }
   };
@@ -58,9 +82,18 @@ export const AuthProvider: React.FC<ProviderProps> = ({ children }) => {
       setIsAuthenticated(false);
       setUser(null);
     } catch (error) {
-      console.error("Logout error:", error);
+      console.error('Logout error:', error);
     }
   };
+
+  // Listen to Firebase Auth state changes
+  React.useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      setUser(mapFirebaseUserToUserProfile(firebaseUser));
+      setIsAuthenticated(!!firebaseUser);
+    });
+    return () => unsubscribe();
+  }, []);
 
   return (
     <AuthContext.Provider value={{ isAuthenticated, user, login, signup, logout }}>
