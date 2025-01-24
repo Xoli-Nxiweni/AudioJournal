@@ -43,7 +43,7 @@ interface PlaybackState {
 
 // Constants
 const STORAGE_KEY = "voiceNotes";
-const MAX_RECORDING_DURATION = 600; // 10 minutes
+const MAX_RECORDING_DURATION = 600;
 const PLAYBACK_SPEEDS = [0.5, 1.0, 1.5, 2.0];
 
 const RecordsScreen: React.FC = () => {
@@ -425,7 +425,7 @@ const RecordsScreen: React.FC = () => {
 
   // Main Render
   return (
-    <View style={[styles.container, { backgroundColor: "skyblue" }]}>
+    <View style={[styles.container, { backgroundColor: "#124" }]}>
       <TextInput
         style={[styles.searchInput, { backgroundColor: colors.card, color: colors.text }]}
         placeholder="Search Notes"
@@ -566,6 +566,7 @@ const styles = StyleSheet.create({
     }),
   },
   noteContainer: {
+    backgroundColor: "red",
     flexDirection: "row",
     padding: 16,
     marginBottom: 8,

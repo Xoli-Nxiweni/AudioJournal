@@ -6,6 +6,7 @@ import HomeScreen from './src/screens/HomeScreen';
 import RecordsScreen from './src/screens/RecordsScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import { SettingsProvider } from './src/contexts/SettingsContext';
+import { StatusBar } from 'expo-status-bar';
 
 const Stack = createStackNavigator();
 
@@ -13,13 +14,14 @@ const App: React.FC = () => {
   return (
     <SettingsProvider>
       <NavigationContainer>
+        <StatusBar backgroundColor='#124' style='light'/>
         <Stack.Navigator
           initialRouteName="Home"
           screenOptions={{
             headerStyle: {
-              backgroundColor: 'skyblue',
+              backgroundColor: '#124',
             },
-            headerTintColor: '#333',
+            headerTintColor: '#fff',
             headerTitleStyle: {
               fontWeight: 'bold', 
               fontSize: 20,
@@ -42,8 +44,8 @@ const App: React.FC = () => {
             component={SettingsScreen} 
             options={{
               title: 'App Settings',
-              // headerStyle: { backgroundColor: '#FF5722' }, 
-              headerTintColor: '#FFFFFF',
+              headerStyle: { backgroundColor: '#FF5722' }, 
+              headerTintColor: '#000',
             }} 
           />
         </Stack.Navigator>
